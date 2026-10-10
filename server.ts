@@ -493,6 +493,161 @@ Return JSON only.`;
   }
 });
 
+type ParsedClass = {
+  title: string;
+  course: string;
+  daysOfWeek: number[];
+  startTime: string;
+  endTime: string;
+  location: string;
+  startDate: string | null;
+  endDate: string | null;
+};
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const toDateStr = (date: Date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+const parseLocalDate = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+};
+const isHHMM = (value: any) => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+const isYMD = (value: any) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+const DEFAULT_TERM_WEEKS = 15;
+const MAX_CLASS_EVENTS = 300;
+
+function expandClasses(classes: ParsedClass[], today: string) {
+  const events: any[] = [];
+  for (const classInfo of classes) {
+    if (!isHHMM(classInfo.startTime) || !isHHMM(classInfo.endTime)) continue;
+    const days = (classInfo.daysOfWeek || []).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
+    const start = parseLocalDate(isYMD(classInfo.startDate) ? classInfo.startDate as string : today);
+    const end = days.length === 0
+      ? start
+      : isYMD(classInfo.endDate)
+        ? parseLocalDate(classInfo.endDate as string)
+        : new Date(start.getFullYear(), start.getMonth(), start.getDate() + DEFAULT_TERM_WEEKS * 7 - 1);
+    const slug = (classInfo.course || classInfo.title || 'class').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+    for (let date = new Date(start); date <= end && events.length < MAX_CLASS_EVENTS; date.setDate(date.getDate() + 1)) {
+      if (days.length > 0 && !days.includes(date.getDay())) continue;
+      const dateStr = toDateStr(date);
+      events.push({
+        uid: `chat-${slug}-${dateStr}-${classInfo.startTime.replace(':', '')}`,
+        title: classInfo.title || classInfo.course || 'Class',
+        course: classInfo.course || classInfo.title || 'Class',
+        location: classInfo.location || '',
+        type: 'class',
+        source: 'chatbot',
+        start: `${dateStr}T${classInfo.startTime}:00`,
+        end: `${dateStr}T${classInfo.endTime}:00`,
+      });
+    }
+  }
+  return events;
+}
+
+function fallbackParseClasses(message: string, today: string): ParsedClass[] {
+  const text = message.replace(/\s+/g, ' ');
+  const lower = text.toLowerCase();
+  const dayMap: Record<string, number> = {
+    sun: 0, mon: 1, tue: 2, tues: 2, wed: 3, thu: 4, thur: 4, thurs: 4, fri: 5, sat: 6,
+  };
+  const days = new Set<number>();
+  for (const match of lower.matchAll(/\b(sun|mon|tues?|wed|thu(?:rs?)?|fri|sat)[a-z]*\b/g)) days.add(dayMap[match[1]]);
+  const compactDays: Record<string, number[]> = {
+    mwf: [1, 3, 5], mw: [1, 3], wf: [3, 5], mf: [1, 5], tth: [2, 4], tr: [2, 4], tuth: [2, 4],
+  };
+  const compactMatch = lower.match(/\b(mwf|mw|wf|mf|tth|tr|tuth)\b/);
+  if (compactMatch) compactDays[compactMatch[1]].forEach((day) => days.add(day));
+
+  const to24 = (hour: number, minute: number, meridiem?: string) => {
+    if (meridiem?.toLowerCase() === 'pm' && hour < 12) hour += 12;
+    else if (meridiem?.toLowerCase() === 'am' && hour === 12) hour = 0;
+    else if (!meridiem && hour >= 1 && hour <= 7) hour += 12;
+    return `${pad2(hour)}:${pad2(minute)}`;
+  };
+  let startTime = '';
+  let endTime = '';
+  const range = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:-|–|to|until)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (range) {
+    const endMeridiem = range[6] || undefined;
+    const startMeridiem = range[3] || endMeridiem;
+    startTime = to24(Number(range[1]), Number(range[2] || 0), startMeridiem);
+    endTime = to24(Number(range[4]), Number(range[5] || 0), endMeridiem);
+  } else {
+    const single = text.match(/(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+    if (single) {
+      startTime = to24(Number(single[1]), Number(single[2] || 0), single[3]);
+      const [hour, minute] = startTime.split(':').map(Number);
+      const endMinutes = hour * 60 + minute + 75;
+      endTime = `${pad2(Math.floor(endMinutes / 60) % 24)}:${pad2(endMinutes % 60)}`;
+    }
+  }
+
+  const courseMatch = text.match(/\b([A-Za-z]{2,5})[\s-]?(\d{3}[A-Za-z]?)\b/);
+  const course = courseMatch ? `${courseMatch[1].toUpperCase()} ${courseMatch[2]}` : '';
+  const locationMatch = text.match(/\b(?:in|at|@)\s+((?:room\s+\w+)|(?:[A-Z][A-Za-z]+(?:\s[A-Z][A-Za-z]+)*\s(?:Hall|Building|Center|Lab|Room)(?:\s\w+)?)|(?:[A-Z][A-Za-z]+\s\d{2,4}))/);
+  if (!startTime || !endTime || !course) return [];
+
+  return [{
+    title: course,
+    course,
+    daysOfWeek: Array.from(days),
+    startTime,
+    endTime,
+    location: locationMatch ? locationMatch[1] : '',
+    startDate: today,
+    endDate: null,
+  }];
+}
+
+app.post('/api/gemini/parse-classes', async (req, res) => {
+  try {
+    const { message, today, weekday, chatHistory } = req.body;
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+    const todayStr = isYMD(today) ? today : toDateStr(new Date());
+
+    if (!apiKey) {
+      const classes = fallbackParseClasses(message, todayStr);
+      const events = expandClasses(classes, todayStr);
+      if (events.length === 0) {
+        return res.json({
+          reply: 'I could not quite catch that. Try including the course, days, and time, like "CS 111 Mon/Wed/Fri 10:00-11:20am".',
+          events: [],
+        });
+      }
+      const classInfo = classes[0];
+      return res.json({
+        reply: `Added ${events.length} session${events.length === 1 ? '' : 's'} of ${classInfo.course} to your calendar${classInfo.daysOfWeek.length ? ` through the next ${DEFAULT_TERM_WEEKS} weeks` : ''}.`,
+        events,
+      });
+    }
+
+    const systemInstruction = `You are a scheduling assistant. Today is ${todayStr} (${weekday || 'unknown weekday'}). Extract classes or meetings from the student's message. Return JSON with reply and classes. Each class has title, course, daysOfWeek (0=Sunday through 6=Saturday), startTime/endTime as HH:MM 24-hour strings, location, and nullable startDate/endDate as YYYY-MM-DD. Interpret MWF as [1,3,5], TTh as [2,4]. Infer a 75-minute duration if no end time is given. Resolve relative dates using today. If details are missing, ask one concise clarification and return no classes.`;
+    const contents: any[] = [];
+    if (Array.isArray(chatHistory)) {
+      for (const item of chatHistory.slice(-6)) {
+        contents.push({ role: item.role === 'user' ? 'user' : 'model', parts: [{ text: String(item.text || '') }] });
+      }
+    }
+    contents.push({ role: 'user', parts: [{ text: message }] });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents,
+      config: { systemInstruction, responseMimeType: 'application/json' },
+    });
+    const parsed = JSON.parse(response.text || '{}');
+    const events = expandClasses(Array.isArray(parsed.classes) ? parsed.classes : [], todayStr);
+    return res.json({ reply: parsed.reply || 'Done!', events });
+  } catch (error: any) {
+    console.error('Gemini parse-classes error:', error);
+    return res.status(500).json({ error: error.message || 'Failed to parse classes' });
+  }
+});
+
 // Setup Vite in development or serve static in production
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
