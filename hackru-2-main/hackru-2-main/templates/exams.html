@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "macros.html" import exam_list %}
+{% block title %}Exams{% endblock %}
+
+{% block content %}
+<header class="topbar"><h1>Exams</h1></header>
+<section class="card">
+  <h2>Exam Countdown</h2>
+  {% if exams %}
+    {{ exam_list(exams) }}
+  {% else %}
+    <p class="empty">No upcoming exams. Import your calendar on the <a href="{{ url_for('index') }}">Imports page</a>; events with "exam" or "midterm" in the title show up here.</p>
+  {% endif %}
+</section>
+{% endblock %}

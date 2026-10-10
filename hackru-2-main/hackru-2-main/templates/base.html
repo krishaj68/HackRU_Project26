@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Dashboard{% endblock %} · Workload</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {# Endpoints that belong to the "Notes" section keep its sidebar button highlighted #}
+  {% set ep = request.endpoint or '' %}
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">Workload</div>
+      <nav class="side-nav">
+        <a class="{{ 'active' if ep == 'index' }}" href="{{ url_for('index') }}">Imports</a>
+        <a class="{{ 'active' if ep == 'todo_page' }}" href="{{ url_for('todo_page') }}">To Do</a>
+        <a class="{{ 'active' if ep in ('notes_page', 'folder_page', 'class_page') }}" href="{{ url_for('notes_page') }}">Notes</a>
+        <a class="{{ 'active' if ep == 'exams_page' }}" href="{{ url_for('exams_page') }}">Exams</a>
+      </nav>
+      <form method="post" action="{{ url_for('reset_demo') }}">
+        <button class="text-btn" type="submit">Reset demo data</button>
+      </form>
+    </aside>
+
+    <main class="content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}" role="status">{{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  {# Floating study timer, controlled by buttons with data-study-btn (see app.js) #}
+  <div id="study-pill" class="study-pill" hidden></div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

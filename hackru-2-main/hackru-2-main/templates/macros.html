@@ -1,0 +1,31 @@
+{# Shared pieces. Import with: {% from "macros.html" import day_groups, exam_list %} #}
+
+{# Items grouped by day (read-only list) #}
+{% macro day_groups(groups) %}
+  {% for g in groups %}
+    <section class="day-group {{ 'past' if g.past }}">
+      <h3>{{ g.label }}{% if g.today %} <span class="tag">Today</span>{% elif g.past %} <span class="tag muted-tag">Past</span>{% endif %}</h3>
+      <ul class="rows">
+        {% for i in g.entries %}
+          <li>
+            <span><strong>{{ i.title }}</strong>{% if i.course %} <span class="muted">{{ i.course }}</span>{% endif %}</span>
+            <span class="time">{{ i.time_label }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endfor %}
+{% endmacro %}
+
+{# Exam countdown list #}
+{% macro exam_list(exams) %}
+  <ul class="rows">
+    {% for e in exams %}
+      <li>
+        <span><strong>{{ e.title }}</strong>{% if e.course %} <span class="muted">{{ e.course }}</span>{% endif %}<br>
+          <span class="muted">{{ e.day_label }} · {{ e.time_label }}</span></span>
+        <span class="countdown">{% if e.days_left == 0 %}Today{% elif e.days_left == 1 %}1 day{% else %}{{ e.days_left }} days{% endif %}</span>
+      </li>
+    {% endfor %}
+  </ul>
+{% endmacro %}
