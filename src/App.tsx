@@ -7,7 +7,16 @@ import { ToDoView } from './components/ToDoView';
 import { NotesView } from './components/NotesView';
 import { ExamsView } from './components/ExamsView';
 import { StudyLockdownModal } from './components/StudyLockdownModal';
-import { Assignment, Exam, Folder, ScheduleBlock, ViewTab } from './types';
+import { Assignment, ClassItem, Exam, Folder, ScheduleBlock, ViewTab } from './types';
+import type { ParsedCalendar } from './utils/icsParser';
+import {
+  ImportMode,
+  ImportSummary,
+  courseKey,
+  detectExams,
+  mergeAssignments,
+  mergeExams,
+} from './utils/calendarMerge';
 import {
   generateInitialAssignments,
   generateInitialExams,
@@ -131,67 +140,77 @@ export default function App() {
     setAssignments((prev) => [newA, ...prev]);
   };
 
-  // Handler: Import Real Assignments from Canvas or .ics file
-  const handleImportAssignments = (imported: Assignment[], sourceName: string) => {
-    setAssignments(imported);
-
-    // Automatically derive unique real courses from their iCal
-    const rawCourses = Array.from(
-      new Set(imported.map((a) => a.course).filter((c) => c && c !== 'General'))
-    );
-    const uniqueCourses = rawCourses.length > 0 ? rawCourses : ['General Coursework'];
-
-    // Automatically build a semester folder with classes for their real courses
-    const newFolderId = `folder-${Date.now()}`;
-    const newFolder: Folder = {
-      id: newFolderId,
-      name: 'Current Semester',
-      classes: uniqueCourses.map((courseCode, idx) => ({
-        id: `class-${Date.now()}-${idx}`,
-        name: `${courseCode}`,
-        code: courseCode,
-        color: getCourseColor(courseCode),
-        folderId: newFolderId,
-        units: [
-          {
-            id: `unit-1-${idx}`,
-            name: 'Unit 1: Syllabus & Foundations',
-            notes: `Course notes and materials for ${courseCode}. Add lecture notes, formulas, and homework briefs here.`,
-          },
-          {
-            id: `unit-2-${idx}`,
-            name: 'Unit 2: Core Concepts & Practice',
-            notes: `Important lecture topics and practice problems for ${courseCode}.`,
-          },
-          {
-            id: `unit-3-${idx}`,
-            name: 'Unit 3: Midterm & Exam Preparation',
-            notes: `High-yield exam takeaways and formula cheat sheets for ${courseCode}.`,
-          },
-        ],
-      })),
+  // Build a class card (with starter units) for a course code
+  const buildClass = (courseCode: string, folderId: string, idx: number): ClassItem => {
+    const stamp = Date.now();
+    return {
+      id: `class-${stamp}-${idx}`,
+      name: courseCode,
+      code: courseCode,
+      color: getCourseColor(courseCode),
+      folderId,
+      units: [
+        {
+          id: `unit-1-${stamp}-${idx}`,
+          name: 'Unit 1: Syllabus & Foundations',
+          notes: `Course notes and materials for ${courseCode}. Add lecture notes, formulas, and homework briefs here.`,
+        },
+        {
+          id: `unit-2-${stamp}-${idx}`,
+          name: 'Unit 2: Core Concepts & Practice',
+          notes: `Important lecture topics and practice problems for ${courseCode}.`,
+        },
+        {
+          id: `unit-3-${stamp}-${idx}`,
+          name: 'Unit 3: Midterm & Exam Preparation',
+          notes: `High-yield exam takeaways and formula cheat sheets for ${courseCode}.`,
+        },
+      ],
     };
-    setFolders([newFolder]);
+  };
 
-    // Automatically detect any exams from the .ics events
-    const detectedExams: Exam[] = imported
-      .filter((a) => /exam|midterm|final|test|quiz/i.test(a.title + ' ' + a.desc))
-      .map((a, idx) => ({
-        id: `exam-${Date.now()}-${idx}`,
-        title: a.title,
-        course: a.course,
-        date: new Date(a.start).toISOString(),
-        weight: a.weight || 25,
-        location: 'See course syllabus',
-        topics: ['Course Exam Topics'],
-      }));
+  // Handler: Import a parsed calendar (Canvas feed, .ics file or pasted text).
+  //  - 'merge'   adds new items and updates changed ones, keeping check marks and AI fields
+  //  - 'replace' swaps the calendar data for the file's contents
+  // Either way, existing notes and folders are never deleted.
+  const handleImportCalendar = (parsed: ParsedCalendar, mode: ImportMode): ImportSummary => {
+    // Exams come from two places: events this app exported as exams, and exam-like titles
+    const importedExams = [...parsed.exams];
+    for (const e of detectExams(parsed.assignments)) {
+      if (!importedExams.some((x) => x.id === e.id)) importedExams.push(e);
+    }
 
-    if (detectedExams.length > 0) {
-      setExams(detectedExams);
+    const mergedAssignments = mergeAssignments(assignments, parsed.assignments, mode);
+    const mergedExams = mergeExams(exams, importedExams, mode);
+    setAssignments(mergedAssignments.items);
+    setExams(mergedExams.items);
+
+    // Create classes only for courses we have not seen before
+    const known = new Set(folders.flatMap((f) => f.classes.map((c) => courseKey(c.code))));
+    const newCourses: string[] = [];
+    for (const c of [...parsed.assignments.map((a) => a.course), ...importedExams.map((e) => e.course)]) {
+      if (c && c !== 'General' && !known.has(courseKey(c))) {
+        known.add(courseKey(c));
+        newCourses.push(c);
+      }
+    }
+    if (newCourses.length === 0 && folders.length === 0 && parsed.assignments.length > 0) {
+      newCourses.push('General Coursework');
+    }
+
+    if (newCourses.length > 0) {
+      const target = folders.find((f) => f.name === 'Current Semester');
+      const folderId = target ? target.id : `folder-${Date.now()}`;
+      const classes = newCourses.map((code, idx) => buildClass(code, folderId, idx));
+      setFolders(
+        target
+          ? folders.map((f) => (f.id === folderId ? { ...f, classes: [...f.classes, ...classes] } : f))
+          : [...folders, { id: folderId, name: 'Current Semester', classes }]
+      );
     }
 
     setSyncedTime(new Date());
-    setCurrentTab('schedule'); // Seamlessly route to the schedule view to see their real classes
+    return { assignments: mergedAssignments.stats, exams: mergedExams.stats, newCourses };
   };
 
   // Handler: Apply Schedule Blocks to Calendar
@@ -317,7 +336,10 @@ export default function App() {
 
           {currentTab === 'imports' && (
             <ImportsView
-              onImportAssignments={handleImportAssignments}
+              assignments={assignments}
+              exams={exams}
+              onImportCalendar={handleImportCalendar}
+              onViewSchedule={() => setCurrentTab('schedule')}
               onResetSampleData={handleResetSampleData}
             />
           )}
