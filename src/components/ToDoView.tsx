@@ -31,12 +31,13 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
   const [newDueDate, setNewDueDate] = useState('');
   const [newWeight, setNewWeight] = useState(15);
   const [newDesc, setNewDesc] = useState('');
+  const taskAssignments = assignments.filter((assignment) => assignment.type === 'a');
 
   // Call Gemini to prioritize based on weight and due date
   const handleTriggerGeminiPrioritization = async () => {
     setIsPrioritizing(true);
     try {
-      const activeOnly = assignments.filter((a) => !a.completed);
+      const activeOnly = taskAssignments.filter((assignment) => !assignment.completed);
       const res = await fetch('/api/gemini/prioritize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -110,7 +111,7 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
   };
 
   // Filtered and Sorted list
-  const filtered = assignments.filter((a) => {
+  const filtered = taskAssignments.filter((a) => {
     if (filterMode === 'active') return !a.completed;
     if (filterMode === 'completed') return a.completed;
     return true;
@@ -153,7 +154,7 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
               To Do
             </h2>
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#1f5c4d] text-white font-bold">
-              {assignments.filter((a) => !a.completed).length} Active
+              {taskAssignments.filter((a) => !a.completed).length} Active
             </span>
           </div>
           <p className="text-xs text-[#5d6d70] mt-1">
@@ -222,7 +223,7 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
               filterMode === 'all' ? 'bg-[#1f5c4d] text-white shadow-xs' : 'text-[#5d6d70] hover:text-[#17262b]'
             }`}
           >
-            All ({assignments.length})
+            All ({taskAssignments.length})
           </button>
           <button
             onClick={() => setFilterMode('completed')}
@@ -230,7 +231,7 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
               filterMode === 'completed' ? 'bg-[#1f5c4d] text-white shadow-xs' : 'text-[#5d6d70] hover:text-[#17262b]'
             }`}
           >
-            Completed ({assignments.filter((a) => a.completed).length})
+            Completed ({taskAssignments.filter((a) => a.completed).length})
           </button>
         </div>
 
