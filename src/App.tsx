@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { ScheduleView } from './components/ScheduleView';
+import type { ChatCalendarEvent } from '../files/ClassChatbot';
 import { ImportsView } from './components/ImportsView';
 import { ToDoView } from './components/ToDoView';
 import { NotesView } from './components/NotesView';
@@ -138,6 +139,30 @@ export default function App() {
   // Handler: Add Custom Assignment
   const handleAddAssignment = (newA: Assignment) => {
     setAssignments((prev) => [newA, ...prev]);
+  };
+
+  const handleAddClassEvents = (events: ChatCalendarEvent[]) => {
+    const newAssignments: Assignment[] = events.map((event) => ({
+      uid: event.uid,
+      title: event.title,
+      course: event.course,
+      start: new Date(event.start),
+      all: false,
+      desc: [event.location, `Ends at ${new Date(event.end).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`]
+        .filter(Boolean)
+        .join(' · '),
+      url: '#',
+      type: 'e',
+      weight: 0,
+      completed: false,
+    }));
+
+    setAssignments((prev) => [...newAssignments, ...prev]);
+  };
+
+  const handleRemoveClassEvents = (uids: string[]) => {
+    const removedUids = new Set(uids);
+    setAssignments((prev) => prev.filter((assignment) => !removedUids.has(assignment.uid)));
   };
 
   // Build a class card (with starter units) for a course code
@@ -331,6 +356,8 @@ export default function App() {
               onNavigateToNotes={() => setCurrentTab('notes')}
               onNavigateToImports={() => setCurrentTab('imports')}
               onApplyScheduleToCalendar={handleApplyScheduleToCalendar}
+              onAddClassEvents={handleAddClassEvents}
+              onRemoveClassEvents={handleRemoveClassEvents}
             />
           )}
 

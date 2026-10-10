@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Check, Clock, Aler
 import { Assignment, Exam, ScheduleBlock } from '../types';
 import { getCourseColor } from '../utils/sampleData';
 import { GeminiSchedulePlannerModal } from './GeminiSchedulePlannerModal';
+import ClassChatbot, { ChatCalendarEvent } from '../../files/ClassChatbot';
 
 interface ScheduleViewProps {
   assignments: Assignment[];
@@ -12,6 +13,8 @@ interface ScheduleViewProps {
   onNavigateToNotes: (courseCode?: string) => void;
   onNavigateToImports: () => void;
   onApplyScheduleToCalendar: (blocks: ScheduleBlock[]) => void;
+  onAddClassEvents: (events: ChatCalendarEvent[]) => void;
+  onRemoveClassEvents: (uids: string[]) => void;
 }
 
 export const ScheduleView: React.FC<ScheduleViewProps> = ({
@@ -22,6 +25,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   onNavigateToNotes,
   onNavigateToImports,
   onApplyScheduleToCalendar,
+  onAddClassEvents,
+  onRemoveClassEvents,
 }) => {
   const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -580,6 +585,12 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           </div>
         </div>
       </div>
+
+      <ClassChatbot
+        className="h-[360px]"
+        onAddEvents={onAddClassEvents}
+        onRemoveEvents={onRemoveClassEvents}
+      />
 
       {/* Gemini Schedule Planner Modal */}
       <GeminiSchedulePlannerModal
