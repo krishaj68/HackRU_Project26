@@ -1,0 +1,7 @@
+{
+  "name": "Cadence Study",
+  "description": "Student workload, calendar scheduling, Gemini-powered task prioritization, study guide generation, exam countdowns, and distraction-free lockdown study sessions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
