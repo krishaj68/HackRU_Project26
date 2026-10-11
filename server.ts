@@ -1,6 +1,6 @@
 import express from 'express';
+import { createServer as createHttpServer } from 'http';
 import path from 'path';
-import net from 'net';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -657,26 +657,41 @@ app.post('/api/gemini/parse-classes', async (req, res) => {
   }
 });
 
-async function findAvailablePort(startPort: number, maxAttempts = 20): Promise<number> {
+async function listenOnAvailablePort(
+  server: ReturnType<typeof createHttpServer>,
+  startPort: number,
+  maxAttempts = 20
+): Promise<number> {
   for (let portCandidate = startPort; portCandidate < startPort + maxAttempts; portCandidate++) {
-    const isAvailable = await new Promise<boolean>((resolve) => {
-      const tester = net.createServer();
-
-      tester.once('error', (err: NodeJS.ErrnoException) => {
-        resolve(err.code !== 'EADDRINUSE');
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const onError = (error: NodeJS.ErrnoException) => {
+          server.off('listening', onListening);
+          reject(error);
+        };
+        const onListening = () => {
+          server.off('error', onError);
+          resolve();
+        };
+        server.once('error', onError);
+        server.once('listening', onListening);
+        server.listen(portCandidate);
       });
-
-      tester.once('listening', () => {
-        tester.close(() => resolve(true));
-      });
-
-      tester.listen(portCandidate, '127.0.0.1');
-    });
-
-    if (isAvailable) return portCandidate;
+      return portCandidate;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !('code' in error) ||
+        error.code !== 'EADDRINUSE' ||
+        portCandidate === startPort + maxAttempts - 1
+      ) {
+        throw error;
+      }
+      console.warn(`Port ${portCandidate} is already in use; trying ${portCandidate + 1}.`);
+    }
   }
 
-  return startPort;
+  throw new Error(`Could not listen on a port in the range ${startPort}-${startPort + maxAttempts - 1}.`);
 }
 
 app.post('/api/gemini/organize-notes', async (req, res) => {
@@ -765,10 +780,15 @@ Return exactly ONE unit named "${unitTitle}" containing all of the organized not
 
 // Setup Vite in development or serve static in production
 async function startServer() {
+  const httpServer = createHttpServer(app);
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer } = await import('vite');
     const vite = await createServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        ws: { server: httpServer },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -779,10 +799,8 @@ async function startServer() {
     });
   }
 
-  const actualPort = await findAvailablePort(port);
-  app.listen(actualPort, () => {
-    console.log(`Cadence Study server listening on http://localhost:${actualPort}`);
-  });
+  const actualPort = await listenOnAvailablePort(httpServer, port);
+  console.log(`Cadence Study server listening on http://localhost:${actualPort}`);
 }
 
 startServer();

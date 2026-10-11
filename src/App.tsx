@@ -7,6 +7,7 @@ import { ImportsView } from './components/ImportsView';
 import { ToDoView } from './components/ToDoView';
 import { NotesView } from './components/NotesView';
 import { ExamsView } from './components/ExamsView';
+import { CalendarEditor } from './components/CalendarEditor';
 import { StudyLockdownModal } from '../studyLockdown/StudyLockdownModal';
 import { Assignment, ClassItem, Exam, Folder, ScheduleBlock, UnitItem, ViewTab } from './types';
 import type { ParsedCalendar } from './utils/icsParser';
@@ -479,6 +480,13 @@ export default function App() {
           )}
         </main>
       </div>
+
+      <CalendarEditor
+        assignments={assignments}
+        exams={exams}
+        setAssignments={setAssignments}
+        setExams={setExams}
+      />
 
       {/* Study Sesh Lockdown Overlay Modal */}
       {isStudyPickerOpen && (
