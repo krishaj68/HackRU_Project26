@@ -14,7 +14,7 @@ import {
   Maximize2,
   Minimize2,
 } from 'lucide-react';
-import { QuizData } from '../types';
+ import type { QuizData } from '../src/types';
 
 interface StudyLockdownModalProps {
   courseName: string;

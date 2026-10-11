@@ -23,7 +23,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       description: 'Calendar & workload per day',
     },
     {
-      id: 'imports/exports' as ViewTab,
+      id: 'imports' as ViewTab,
       label: 'Imports / Exports',
       icon: DownloadCloud,
       description: 'Canvas link, files & links',
