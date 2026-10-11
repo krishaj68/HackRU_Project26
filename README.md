@@ -1,4 +1,4 @@
-# Cadence Study — Workload, Time Management & Study App
+# RULockIn — Workload, Time Management & Study App
 
 A collegiate workload, time management, and study time application built for hackathons, featuring Canvas Calendar integration, Gemini AI-powered task scheduling, automated study guide generation, hierarchical note organization, live exam countdowns, and distraction-free Pomodoro lockdown study sessions with retention quizzes.
 
