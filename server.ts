@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '30mb' }));
 
@@ -101,15 +101,18 @@ app.post('/api/gemini/prioritize', async (req, res) => {
       // Graceful algorithmic fallback if no API key is provided
       const prioritized = assignments.map((a: any, idx: number) => {
         const dueDate = new Date(a.start);
-        const hoursLeft = Math.max(1, Math.round((dueDate.getTime() - Date.now()) / (1000 * 60 * 60)));
-        const weight = a.weight || 10;
-        const score = Math.round((weight * 2) + Math.max(0, 100 - hoursLeft / 2));
+        const hoursLeft = (dueDate.getTime() - Date.now()) / (1000 * 60 * 60);
+        const daysLeft = hoursLeft / 24;
+        const weight = Number(a.weight) || 10;
+        const weightScore = Math.min(100, Math.max(0, weight));
+        const deadlineScore = Math.min(100, Math.max(0, (1 - daysLeft / 7) * 100));
+        const score = Math.round(weightScore * 0.6 + deadlineScore * 0.4);
         return {
           uid: a.uid,
           priorityRank: idx + 1,
-          score: Math.min(99, Math.max(10, score)),
+          score: Math.min(100, Math.max(0, score)),
           estimatedHours: weight > 20 ? 4 : weight > 10 ? 2.5 : 1.5,
-          urgency: hoursLeft < 48 ? 'HIGH' : hoursLeft < 120 ? 'MEDIUM' : 'NORMAL',
+          urgency: hoursLeft < 24 ? 'CRITICAL' : hoursLeft < 72 ? 'HIGH' : hoursLeft < 168 ? 'MEDIUM' : 'LOW',
           reason: `Due in ${Math.round(hoursLeft / 24)}d (${weight}% of grade). High impact task.`,
           recommendedSlot: 'Today 4:00 PM - 6:00 PM',
         };
@@ -135,6 +138,11 @@ ${JSON.stringify(assignments.map((a: any) => ({
 
 Current date: ${new Date().toISOString()}
 User preferences: ${userContext || 'Prioritize high grade-weight items and soonest due dates to minimize stress.'}
+
+Prioritization rules:
+- Balance grade weight (60% of the score) with due-date urgency (40%).
+- Apply due-date urgency over a 7-day window: overdue or due today is most urgent, urgency tapers toward zero at 7 days, and dates beyond 7 days get no urgency bonus.
+- Keep high grade weight meaningful even when its due date is outside the 7-day window.
 
 Return JSON with this exact schema:
 {

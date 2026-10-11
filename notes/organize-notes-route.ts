@@ -11,11 +11,12 @@
 //   app.use(express.json({ limit: '30mb' }));
 
 import { GoogleGenAI, Type } from '@google/genai';
+import type { Express, Request, Response } from 'express';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'; // use the same model as your other routes
 
-app.post('/api/gemini/organize-notes', async (req, res) => {
+export const registerOrganizeNotesRoute = (app: Express) => app.post('/api/gemini/organize-notes', async (req: Request, res: Response) => {
   try {
     const {
       courseName = 'College Course',
