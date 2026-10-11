@@ -1,78 +1,75 @@
-RULockIn — Workload, Time Management & Study App
+# RULockIn — Workload, Time Management & Study App
+
 A collegiate workload, time management, and study time application built for hackathons, featuring Canvas Calendar integration, Gemini AI-powered task scheduling, automated study guide generation, hierarchical note organization, live exam countdowns, distraction-free Pomodoro lockdown study sessions with retention quizzes, and a companion Chrome extension for browser-wide focus enforcement.
 
-🚀 Running on Your Computer
-Prerequisites
-Node.js: v18.0.0 or later (v20+ recommended)
+---
 
-npm or bun / pnpm
+## 🚀 Running on Your Computer
 
-Google Chrome (or any Chromium-based browser) for the extension component.
+### Prerequisites
+- **Node.js**: v18.0.0 or later (v20+ recommended)
+- **npm** or **bun** / **pnpm**
+- **Google Chrome** (or any Chromium-based browser) for the extension component.
+- (Optional) **Gemini API Key**: If you want to use live Gemini AI features locally, obtain a free API key from Google AI Studio (https://aistudio.google.com/).
 
-(Optional) Gemini API Key: If you want to use live Gemini AI features locally, obtain a free API key from Google AI Studio.
+---
 
-Step 1: Start the Web Application
-Unzip the downloaded archive into any folder on your computer.
+### Step 1: Start the Web Application
 
-Open a terminal in the project folder.
+1. Unzip the downloaded archive into any folder on your computer.
+2. Open a terminal in the project folder.
+3. Install dependencies:
+   npm install
 
-Install dependencies:
-npm install
+4. Set up your environment variables:
+   cp .env.example .env
 
-Set up your environment variables:
-cp .env.example .env
-Add your Gemini API key (optional for offline mode, as built-in smart fallbacks are included):
-GEMINI_API_KEY="your_actual_gemini_api_key_here"
+   Add your Gemini API key (optional for offline mode, as built-in smart fallbacks are included):
+   GEMINI_API_KEY="your_actual_gemini_api_key_here"
 
-Start the development server:
-npm run dev
+5. Start the development server:
+   npm run dev
 
-Open your browser and navigate to:
-http://localhost:3000
+6. Open your browser and navigate to:
+   http://localhost:3000
 
-Step 2: Install the Chrome Extension (Lockdown Companion)
+---
+
+### Step 2: Install the Chrome Extension (Lockdown Companion)
+
 The RULockIn Extension enforces browser-wide lockdown during Pomodoro focus sessions by blocking distracting sites (social media, streaming, games) and preventing tab-switching during active study sessions.
 
-Build the extension bundle (if applicable) or locate the extension/ or dist-extension/ directory in your project folder:
-npm run build:extension
+1. Build the extension bundle (if applicable) or locate the extension/ or dist-extension/ directory in your project folder:
+   npm run build:extension
 
-Open Google Chrome and navigate to:
-chrome://extensions
+2. Open Google Chrome and navigate to:
+   chrome://extensions
 
-Enable Developer mode using the toggle switch in the top-right corner.
+3. Enable Developer mode using the toggle switch in the top-right corner.
+4. Click the Load unpacked button in the top-left corner.
+5. Select the extension folder (or dist-extension) from your project directory.
+6. The RULockIn Lockdown Companion icon will now appear in your browser extension toolbar.
+7. Ensure your web application running at http://localhost:3000 is open—the extension automatically pairs with your active Pomodoro study sessions.
 
-Click the Load unpacked button in the top-left corner.
+---
 
-Select the extension folder (or dist-extension) from your project directory.
+## 🛠️ Tech Stack & Architecture
 
-The RULockIn Lockdown Companion icon will now appear in your browser extension toolbar.
+- Frontend: React 19, TypeScript, Tailwind CSS, Lucide Icons
+- Backend: Express (Node.js) via server.ts
+- Browser Extension: Chrome Extension Manifest V3 (Background Service Workers & Content Scripts)
+- AI Intelligence: Google Gemini 3.8 Flash (@google/genai SDK)
+- Calendar Parsing: iCalendar .ics specification parser with course heuristics and grade weight extraction
+- Bundler: Vite
 
-Ensure your web application running at http://localhost:3000 is open—the extension automatically pairs with your active Pomodoro study sessions.
+---
 
-🛠️ Tech Stack & Architecture
-Frontend: React 19, TypeScript, Tailwind CSS, Lucide Icons
+## 📱 Features
 
-Backend: Express (Node.js) via server.ts
-
-Browser Extension: Chrome Extension Manifest V3 (Background Service Workers & Content Scripts)
-
-AI Intelligence: Google Gemini 3.8 Flash (@google/genai SDK)
-
-Calendar Parsing: iCalendar .ics specification parser with course heuristics and grade weight extraction
-
-Bundler: Vite
-
-📱 Features
-🗓️ Schedule (Cadence-inspired): Month and Week view with course color badges, day-by-day workload inspection.
-
-📥 Imports: Direct Canvas Calendar Feed (.ics) connection with server CORS bypass proxy, .ics file upload, and course syllabus links.
-
-✅ To-Do: Assignments ordered chronologically or prioritized by Gemini AI based on grade weight and urgency.
-
-📝 Notes & Classes: Semester folder hierarchy (Fall Sem 26 etc.) → Class cards → 3-column study desk (Course Units, Live Note Editor + AI Study Guide Generator, and Grounded AI Tutor Chatbot).
-
-⏳ Exams & Countdown: Chronological list of exams with live digital countdown timers (Days, Hours, Minutes, Seconds).
-
-🔒 Chrome Extension Lockdown: Browser-wide site blocker and focus enforcement mechanism that integrates with active Pomodoro sessions to block distracting URLs and restrict multi-tab browsing.
-
-🔥 Study Sesh Lockdown: Fullscreen distraction blocker, Pomodoro timer (25m work / 5m break), tab-switch deterrent, and an interactive At-End Retention Quiz generated by Gemini.
+- 🗓️ Schedule (Cadence-inspired): Month and Week view with course color badges, day-by-day workload inspection.
+- 📥 Imports: Direct Canvas Calendar Feed (.ics) connection with server CORS bypass proxy, .ics file upload, and course syllabus links.
+- ✅ To-Do: Assignments ordered chronologically or prioritized by Gemini AI based on grade weight and urgency.
+- 📝 Notes & Classes: Semester folder hierarchy (Fall Sem 26 etc.) → Class cards → 3-column study desk (Course Units, Live Note Editor + AI Study Guide Generator, and Grounded AI Tutor Chatbot).
+- ⏳ Exams & Countdown: Chronological list of exams with live digital countdown timers (Days, Hours, Minutes, Seconds).
+- 🔒 Chrome Extension Lockdown: Browser-wide site blocker and focus enforcement mechanism that integrates with active Pomodoro sessions to block distracting URLs and restrict multi-tab browsing.
+- 🔥 Study Sesh Lockdown: Fullscreen distraction blocker, Pomodoro timer (25m work / 5m break), tab-switch deterrent, and an interactive At-End Retention Quiz generated by Gemini.
