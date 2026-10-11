@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ folder_name }}{% endblock %}
+
+{% block content %}
+<header class="topbar">
+  <h1>{{ folder_name }}</h1>
+  <details class="create">
+    <summary class="btn primary">Create Class</summary>
+    <form method="post" action="{{ url_for('create_class', folder_name=folder_name) }}" class="popover">
+      <label for="class-name">Class name</label>
+      <input id="class-name" name="name" maxlength="40" placeholder="Class6" required>
+      <button class="btn primary" type="submit">Create class</button>
+    </form>
+  </details>
+</header>
+<p class="crumbs"><a href="{{ url_for('notes_page') }}">Notes</a> / {{ folder_name }}</p>
+
+{% if classes %}
+  <div class="grid three">
+    {% for c in classes %}
+      <a class="card tile" href="{{ url_for('class_page', class_name=c, folder=folder_name) }}">
+        <h2>{{ c }}</h2>
+        <span class="muted">5 units</span>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <section class="card"><p class="empty">No classes in this folder yet. Use Create Class to add one.</p></section>
+{% endif %}
+{% endblock %}

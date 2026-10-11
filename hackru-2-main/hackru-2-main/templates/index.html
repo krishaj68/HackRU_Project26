@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "macros.html" import day_groups, exam_list %}
+{% block title %}Imports{% endblock %}
+
+{% block content %}
+<header class="topbar">
+  <h1>Welcome, {{ name }}</h1>
+  <button class="btn primary" type="button" data-study-btn data-label="Study Time!">Study Time!</button>
+</header>
+
+{# ---- Two import forms ---- #}
+<div class="grid two">
+  <form class="card" method="post" action="{{ url_for('import_token') }}">
+    <h2>Canvas access token</h2>
+    <p class="hint">Loads your courses, assignments and files. Demo mode: any token of 8+ characters loads sample data.</p>
+    <label for="token">Access token</label>
+    <input id="token" name="token" type="password" autocomplete="off" placeholder="Paste token" required>
+    <button class="btn primary" type="submit">Load Canvas data</button>
+  </form>
+
+  <form class="card" method="post" action="{{ url_for('import_ical') }}">
+    <h2>Canvas calendar (.ics)</h2>
+    <p class="hint">In Canvas, open Calendar, choose Calendar Feed, and copy the link.</p>
+    <label for="ical_url">Calendar feed URL</label>
+    <input id="ical_url" name="ical_url" type="url" placeholder="https://canvas.school.edu/feeds/calendars/user_….ics" required>
+    <button class="btn primary" type="submit">Import calendar</button>
+  </form>
+</div>
+
+{# ---- Two cards ---- #}
+<div class="grid two">
+  <section class="card">
+    <h2>Assignments Per Day</h2>
+    {% if groups %}
+      {{ day_groups(groups) }}
+      {% if skipped %}<p class="hint">{{ skipped }} broken calendar item(s) were skipped.</p>{% endif %}
+    {% else %}
+      <p class="empty">No assignments yet. Import your calendar feed to see deadlines by day.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Exam Countdown</h2>
+    {% if exams %}
+      {{ exam_list(exams) }}
+    {% else %}
+      <p class="empty">No exams found. Events with "exam" or "midterm" in the title will appear here.</p>
+    {% endif %}
+  </section>
+</div>
+
+{# ---- Shown only after the token import ---- #}
+{% if canvas %}
+<section class="card">
+  <h2>Canvas data <span class="muted">token {{ canvas.token_hint }}</span></h2>
+  <div class="grid three">
+    <div>
+      <h3>Courses</h3>
+      <ul class="rows">{% for c in canvas.courses %}<li><span>{{ c.name }}</span><span class="muted">{{ c.code }}</span></li>{% endfor %}</ul>
+    </div>
+    <div>
+      <h3>Assignments</h3>
+      <ul class="rows">{% for a in canvas.assignments %}<li><span>{{ a.title }} <span class="muted">{{ a.course }}</span></span><span class="time">{{ a.day_label }}</span></li>{% endfor %}</ul>
+    </div>
+    <div>
+      <h3>Files</h3>
+      <ul class="rows">{% for f in canvas.files %}<li><span>{{ f.name }}</span><span class="muted">{{ f.size }}</span></li>{% endfor %}</ul>
+    </div>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
