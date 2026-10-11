@@ -27,8 +27,8 @@ interface ChatMessage {
 }
 
 interface ClassChatbotProps {
-  /** Called with the new events; append them to your calendar state. */
-  onAddEvents: (events: ChatCalendarEvent[]) => void;
+  /** Returns only the events newly added to the calendar. */
+  onAddEvents: (events: ChatCalendarEvent[]) => ChatCalendarEvent[];
   /** Called with uids to remove when the user hits Undo. */
   onRemoveEvents?: (uids: string[]) => void;
   className?: string;
@@ -88,15 +88,23 @@ export default function ClassChatbot({ onAddEvents, onRemoveEvents, className = 
       if (!res.ok) throw new Error(data.error || 'Request failed');
 
       const events: ChatCalendarEvent[] = data.events || [];
-      if (events.length > 0) onAddEvents(events);
+      const addedEvents = events.length > 0 ? onAddEvents(events) : [];
+      const skippedCount = events.length - addedEvents.length;
+      const reply = events.length > 0
+        ? addedEvents.length === 0
+          ? 'Those sessions are already on your calendar.'
+          : skippedCount > 0
+            ? `Added ${addedEvents.length} new session${addedEvents.length === 1 ? '' : 's'}; skipped ${skippedCount} already on your calendar.`
+            : data.reply || 'Added to your calendar.'
+        : data.reply || 'Okay!';
 
       setMessages((prev) => [
         ...prev,
         {
           id: nextId.current++,
           role: 'assistant',
-          text: data.reply || (events.length ? 'Added to your calendar.' : 'Okay!'),
-          addedUids: events.length ? events.map((e) => e.uid) : undefined,
+          text: reply,
+          addedUids: addedEvents.length ? addedEvents.map((event) => event.uid) : undefined,
         },
       ]);
     } catch (err: any) {

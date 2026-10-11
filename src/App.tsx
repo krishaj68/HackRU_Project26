@@ -45,7 +45,14 @@ export default function App() {
           localStorage.removeItem('cadence_assignments');
           return [];
         }
-        return parsed.map((a: any) => ({ ...a, start: new Date(a.start) }));
+        const restoredAssignments = parsed.map((a: any) => ({ ...a, start: new Date(a.start) }));
+        const seenChatUids = new Set<string>();
+        return restoredAssignments.filter((assignment: Assignment) => {
+          if (!assignment.uid.startsWith('chat-')) return true;
+          if (seenChatUids.has(assignment.uid)) return false;
+          seenChatUids.add(assignment.uid);
+          return true;
+        });
       } catch (e) {
         console.error(e);
       }
@@ -141,23 +148,33 @@ export default function App() {
     setAssignments((prev) => [newA, ...prev]);
   };
 
-  const handleAddClassEvents = (events: ChatCalendarEvent[]) => {
-    const newAssignments: Assignment[] = events.map((event) => ({
+  const handleAddClassEvents = (events: ChatCalendarEvent[]): ChatCalendarEvent[] => {
+    const knownUids = new Set(assignments.map((assignment) => assignment.uid));
+    const seenUids = new Set<string>();
+    const newEvents = events.filter((event) => {
+      if (knownUids.has(event.uid) || seenUids.has(event.uid)) return false;
+      seenUids.add(event.uid);
+      return true;
+    });
+    if (newEvents.length === 0) return [];
+
+    const newAssignments: Assignment[] = newEvents.map((event) => ({
       uid: event.uid,
       title: event.title,
       course: event.course,
       start: new Date(event.start),
       all: false,
-      desc: [event.location, `Ends at ${new Date(event.end).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`]
-        .filter(Boolean)
-        .join(' · '),
+      desc: event.location ? `Class meeting in ${event.location}. Ends at ${new Date(event.end).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.` : '',
       url: '#',
       type: 'e',
       weight: 0,
       completed: false,
     }));
-
-    setAssignments((prev) => [...newAssignments, ...prev]);
+    setAssignments((prev) => {
+      const currentUids = new Set(prev.map((assignment) => assignment.uid));
+      return [...newAssignments.filter((assignment) => !currentUids.has(assignment.uid)), ...prev];
+    });
+    return newEvents;
   };
 
   const handleRemoveClassEvents = (uids: string[]) => {
@@ -320,7 +337,7 @@ export default function App() {
     });
   };
 
-  const activeTasksCount = assignments.filter((a) => !a.completed).length;
+  const activeTasksCount = assignments.filter((a) => a.type === 'a' && !a.completed).length;
 
   return (
     <div className="min-h-screen bg-[#f2f4f0] text-[#17262b] flex flex-col font-['DM_Sans',sans-serif]">

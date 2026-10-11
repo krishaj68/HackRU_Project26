@@ -13,7 +13,7 @@ interface ScheduleViewProps {
   onNavigateToNotes: (courseCode?: string) => void;
   onNavigateToImports: () => void;
   onApplyScheduleToCalendar: (blocks: ScheduleBlock[]) => void;
-  onAddClassEvents: (events: ChatCalendarEvent[]) => void;
+  onAddClassEvents: (events: ChatCalendarEvent[]) => ChatCalendarEvent[];
   onRemoveClassEvents: (uids: string[]) => void;
 }
 
