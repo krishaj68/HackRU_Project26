@@ -7,7 +7,7 @@ import { ImportsView } from './components/ImportsView';
 import { ToDoView } from './components/ToDoView';
 import { NotesView } from './components/NotesView';
 import { ExamsView } from './components/ExamsView';
-import { StudyLockdownModal } from './components/StudyLockdownModal';
+import { StudyLockdownModal } from '../studyLockdown/StudyLockdownModal';
 import { Assignment, ClassItem, Exam, Folder, ScheduleBlock, ViewTab } from './types';
 import type { ParsedCalendar } from './utils/icsParser';
 import {
