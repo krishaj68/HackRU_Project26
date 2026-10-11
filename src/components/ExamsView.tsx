@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Plus, Calendar, MapPin, AlertCircle, BookOpen, Flame } from 'lucide-react';
+import { Clock, Plus, Calendar, MapPin, Flame, Archive } from 'lucide-react';
 import { Exam } from '../types';
 import { getCourseColor } from '../utils/sampleData';
 
@@ -15,6 +15,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
   onLaunchStudySession,
 }) => {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [, setTicker] = useState(0);
 
   // Form State
@@ -37,6 +38,9 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
   const sortedExams = [...exams].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   );
+  const upcomingExams = sortedExams.filter((exam) => new Date(exam.date).getTime() >= Date.now());
+  const archivedExams = sortedExams.filter((exam) => new Date(exam.date).getTime() < Date.now());
+  const visibleExams = showArchived ? archivedExams : upcomingExams;
 
   // Time remaining calculator
   const getTimeRemaining = (dateStr: string) => {
@@ -106,22 +110,48 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
         <div className="lg:col-span-7 bg-white rounded-2xl border border-[#dde3de] p-5 shadow-xs space-y-4">
           <div className="pb-3 border-b border-[#dde3de] flex items-center justify-between">
             <h3 className="text-lg font-bold font-['Bricolage_Grotesque',sans-serif] text-[#17262b]">
-              List of Exams Chronologically
+              {showArchived ? 'Archived Exams' : 'Upcoming Exams'}
             </h3>
-            <span className="text-xs font-bold text-[#5d6d70]">
-              {sortedExams.length} Total
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowArchived(false)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors ${
+                  !showArchived
+                    ? 'bg-[#1f5c4d] text-white border-[#1f5c4d]'
+                    : 'bg-white text-[#5d6d70] border-[#dde3de] hover:text-[#17262b]'
+                }`}
+              >
+                Upcoming ({upcomingExams.length})
+              </button>
+              <button
+                onClick={() => setShowArchived(true)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors ${
+                  showArchived
+                    ? 'bg-[#1f5c4d] text-white border-[#1f5c4d]'
+                    : 'bg-white text-[#5d6d70] border-[#dde3de] hover:text-[#17262b]'
+                }`}
+              >
+                <Archive className="w-3 h-3" />
+                Archive ({archivedExams.length})
+              </button>
+            </div>
           </div>
 
-          {sortedExams.length === 0 ? (
+          {visibleExams.length === 0 ? (
             <div className="py-12 text-center text-xs text-[#5d6d70] bg-[#f9faf8] rounded-xl border border-dashed border-[#dde3de]">
               <Clock className="w-8 h-8 text-[#9bb0ad] mx-auto mb-2" />
-              <p className="font-bold text-sm text-[#17262b]">No Scheduled Exams Yet</p>
-              <p className="mt-1">Import your Canvas feed or click "Add Exam" above to start live exam countdowns.</p>
+              <p className="font-bold text-sm text-[#17262b]">
+                {showArchived ? 'No Archived Exams' : 'No Upcoming Exams'}
+              </p>
+              <p className="mt-1">
+                {showArchived
+                  ? 'Past exams will appear here.'
+                  : 'Import your Canvas feed or click "Add Exam" above to start live exam countdowns.'}
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {sortedExams.map((exam, idx) => {
+              {visibleExams.map((exam, idx) => {
                 const examDate = new Date(exam.date);
                 const color = getCourseColor(exam.course);
                 const rem = getTimeRemaining(exam.date);
@@ -223,7 +253,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
               Real-time countdown clocks ticking down to test day
             </p>
 
-            {sortedExams.length === 0 ? (
+            {upcomingExams.length === 0 ? (
               <div className="py-8 text-center text-xs text-[#5d6d70] bg-[#f9faf8] rounded-xl border border-dashed border-[#dde3de]">
                 <Clock className="w-8 h-8 text-[#9bb0ad] mx-auto mb-2" />
                 <p className="font-bold text-sm text-[#17262b]">Countdown Idle</p>
@@ -231,7 +261,7 @@ export const ExamsView: React.FC<ExamsViewProps> = ({
               </div>
             ) : (
               <div className="space-y-4">
-                {sortedExams.slice(0, 3).map((exam) => {
+                {upcomingExams.slice(0, 3).map((exam) => {
                 const color = getCourseColor(exam.course);
                 const rem = getTimeRemaining(exam.date);
 
