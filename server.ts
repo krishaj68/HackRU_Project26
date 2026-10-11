@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import net from 'net';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
@@ -648,6 +649,28 @@ app.post('/api/gemini/parse-classes', async (req, res) => {
   }
 });
 
+async function findAvailablePort(startPort: number, maxAttempts = 20): Promise<number> {
+  for (let portCandidate = startPort; portCandidate < startPort + maxAttempts; portCandidate++) {
+    const isAvailable = await new Promise<boolean>((resolve) => {
+      const tester = net.createServer();
+
+      tester.once('error', (err: NodeJS.ErrnoException) => {
+        resolve(err.code !== 'EADDRINUSE');
+      });
+
+      tester.once('listening', () => {
+        tester.close(() => resolve(true));
+      });
+
+      tester.listen(portCandidate, '127.0.0.1');
+    });
+
+    if (isAvailable) return portCandidate;
+  }
+
+  return startPort;
+}
+
 // Setup Vite in development or serve static in production
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
@@ -664,8 +687,9 @@ async function startServer() {
     });
   }
 
-  app.listen(port, () => {
-    console.log(`Cadence Study server listening on http://localhost:${port}`);
+  const actualPort = await findAvailablePort(port);
+  app.listen(actualPort, () => {
+    console.log(`Cadence Study server listening on http://localhost:${actualPort}`);
   });
 }
 
