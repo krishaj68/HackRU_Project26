@@ -1,26 +1,97 @@
-import React, { useState } from 'react';
-import { DownloadCloud, Link as LinkIcon, FileText, CheckCircle2, AlertCircle, RefreshCw, Sparkles, Globe, Upload } from 'lucide-react';
-import { parseICS } from '../utils/icsParser';
-import { Assignment } from '../types';
+import React, { useMemo, useState } from 'react';
+import {
+  DownloadCloud,
+  Download,
+  Link as LinkIcon,
+  FileText,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  Globe,
+  Upload,
+} from 'lucide-react';
+import { parseCalendar } from '../utils/icsParser';
+import type { ParsedCalendar } from '../utils/icsParser';
+import { buildICS, downloadICS, exportFilename, DEFAULT_EXPORT_OPTIONS } from '../utils/icsExporter';
+import type { ExportOptions } from '../utils/icsExporter';
+import type { ImportMode, ImportSummary } from '../utils/calendarMerge';
+import { Assignment, Exam } from '../types';
 
 interface ImportsViewProps {
-  onImportAssignments: (assignments: Assignment[], sourceName: string) => void;
+  assignments: Assignment[];
+  exams: Exam[];
+  onImportCalendar: (parsed: ParsedCalendar, mode: ImportMode) => ImportSummary;
+  onViewSchedule: () => void;
   onResetSampleData: () => void;
 }
 
+interface StatusMessage {
+  type: 'success' | 'error';
+  text: string;
+  lines?: string[]; // extra details shown under the headline
+  showScheduleLink?: boolean;
+}
+
 export const ImportsView: React.FC<ImportsViewProps> = ({
-  onImportAssignments,
+  assignments,
+  exams,
+  onImportCalendar,
+  onViewSchedule,
   onResetSampleData,
 }) => {
   const [canvasUrl, setCanvasUrl] = useState('');
   const [isSyncingCanvas, setIsSyncingCanvas] = useState(false);
   const [courseLinkUrl, setCourseLinkUrl] = useState('');
   const [pastedIcs, setPastedIcs] = useState('');
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [importMode, setImportMode] = useState<ImportMode>('merge');
+  const [exportOpts, setExportOpts] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
+  const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
+
+  // Live preview of what the export will contain (also holds the file text)
+  const exportPreview = useMemo(
+    () => buildICS(assignments, exams, exportOpts),
+    [assignments, exams, exportOpts]
+  );
+  const exportTotal = exportPreview.assignments + exportPreview.exams + exportPreview.studySessions;
+
+  // Shared by all three import paths: merge into the app and describe what happened.
+  const finishImport = (parsed: ParsedCalendar, sourceLabel: string): boolean => {
+    const total = parsed.assignments.length + parsed.exams.length;
+    if (total === 0) return false;
+
+    const summary = onImportCalendar(parsed, importMode);
+    const lines: string[] = [];
+    const a = summary.assignments;
+    lines.push(`Assignments & events: ${a.added} new, ${a.updated} updated, ${a.unchanged} unchanged.`);
+    const e = summary.exams;
+    if (e.added + e.updated + e.unchanged > 0) {
+      lines.push(`Exams: ${e.added} new, ${e.updated} updated, ${e.unchanged} unchanged.`);
+    }
+    if (summary.newCourses.length > 0) {
+      lines.push(`New classes added to Notes: ${summary.newCourses.join(', ')}.`);
+    }
+    if (parsed.skipped > 0) {
+      lines.push(`${parsed.skipped} item(s) were skipped because they had no valid date.`);
+    }
+    if (parsed.recurring > 0) {
+      lines.push(`${parsed.recurring} recurring event(s) found. Only the first occurrence of each was imported.`);
+    }
+
+    setStatusMessage({
+      type: 'success',
+      text:
+        `Imported ${total} item${total === 1 ? '' : 's'} from ${sourceLabel}` +
+        (importMode === 'replace' ? ' and replaced your previous calendar data.' : '.'),
+      lines,
+      showScheduleLink: true,
+    });
+    return true;
+  };
 
   // Link Canvas Feed via server proxy
   const handleConnectCanvas = async () => {
-    const trimmed = canvasUrl.trim();
+    // Canvas often copies the link as webcal://, which browsers and servers cannot fetch directly
+    const trimmed = canvasUrl.trim().replace(/^webcal:\/\//i, 'https://');
     if (!trimmed) {
       setStatusMessage({ type: 'error', text: 'Please enter your Canvas calendar feed link.' });
       return;
@@ -43,18 +114,10 @@ export const ImportsView: React.FC<ImportsViewProps> = ({
         throw new Error(`Failed to fetch calendar feed (${res.status}). Ensure the link is publicly shareable from your Canvas account.`);
       }
 
-      const icsText = await res.text();
-      const parsed = parseICS(icsText);
-
-      if (parsed.length === 0) {
+      const parsed = parseCalendar(await res.text());
+      if (!finishImport(parsed, 'Canvas Live Feed')) {
         throw new Error('No assignments or calendar events found in the specified feed.');
       }
-
-      onImportAssignments(parsed, 'Canvas Live Feed');
-      setStatusMessage({
-        type: 'success',
-        text: `Successfully synced ${parsed.length} assignments and events from Canvas!`,
-      });
       setCanvasUrl('');
     } catch (err: any) {
       console.error(err);
@@ -77,19 +140,15 @@ export const ImportsView: React.FC<ImportsViewProps> = ({
       const content = event.target?.result as string;
       if (!content) return;
 
-      const parsed = parseICS(content);
-      if (parsed.length === 0) {
+      if (!finishImport(parseCalendar(content), file.name)) {
         setStatusMessage({
           type: 'error',
-          text: 'No valid calendar events detected. Ensure you upload a .ics file exported from Canvas.',
-        });
-      } else {
-        onImportAssignments(parsed, file.name);
-        setStatusMessage({
-          type: 'success',
-          text: `Imported ${parsed.length} assignments from ${file.name}!`,
+          text: 'No valid calendar events detected. Ensure you upload a .ics file exported from Canvas, Google Calendar, Apple Calendar or Outlook.',
         });
       }
+    };
+    reader.onerror = () => {
+      setStatusMessage({ type: 'error', text: 'Could not read that file. Try exporting it again.' });
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -98,21 +157,37 @@ export const ImportsView: React.FC<ImportsViewProps> = ({
   // Parse raw text
   const handleParsePasted = () => {
     if (!pastedIcs.trim()) return;
-    const parsed = parseICS(pastedIcs);
-    if (parsed.length === 0) {
+    if (finishImport(parseCalendar(pastedIcs), 'pasted iCalendar')) {
+      setPastedIcs('');
+    } else {
       setStatusMessage({
         type: 'error',
         text: 'Could not find calendar events in pasted text. Expected iCalendar format starting with BEGIN:VCALENDAR.',
       });
-    } else {
-      onImportAssignments(parsed, 'Pasted iCalendar');
-      setStatusMessage({
-        type: 'success',
-        text: `Successfully imported ${parsed.length} assignments!`,
-      });
-      setPastedIcs('');
     }
   };
+
+  // Download the .ics file
+  const handleExport = () => {
+    if (exportTotal === 0) return;
+    const filename = exportFilename();
+    downloadICS(exportPreview.text, filename);
+
+    const parts = [`${exportPreview.assignments} assignments & events`];
+    if (exportPreview.exams > 0) parts.push(`${exportPreview.exams} exams`);
+    if (exportPreview.studySessions > 0) parts.push(`${exportPreview.studySessions} study sessions`);
+    setStatusMessage({
+      type: 'success',
+      text: `Downloaded ${filename}`,
+      lines: [
+        `Contains ${parts.join(', ')}.`,
+        ...(exportPreview.skipped > 0 ? [`${exportPreview.skipped} item(s) were left out because their date was invalid.`] : []),
+      ],
+    });
+  };
+
+  const toggleOpt = (key: 'includeCompleted' | 'includeExams' | 'includeStudySessions') =>
+    setExportOpts((prev) => ({ ...prev, [key]: !prev[key] }));
 
   // Import course website link (mock or course syllabus)
   const handleImportCourseLink = () => {
@@ -134,11 +209,45 @@ export const ImportsView: React.FC<ImportsViewProps> = ({
           Imports
         </h2>
         <p className="text-sm text-[#5d6d70] mt-1">
-          Connect your Canvas account, import calendar files, or link course websites to pull all files, assignments, and due dates.
+          Connect your Canvas account, import calendar files, or link course websites to pull all files, assignments, and due dates. You can also export everything as a calendar file.
         </p>
+
+        {/* How imports combine with what you already have */}
+        <fieldset className="mt-4 space-y-2">
+          <legend className="text-xs font-bold text-[#5d6d70] uppercase tracking-wider mb-1">
+            When importing
+          </legend>
+          <label className="flex items-start gap-2 text-sm text-[#17262b] cursor-pointer">
+            <input
+              type="radio"
+              name="import-mode"
+              checked={importMode === 'merge'}
+              onChange={() => setImportMode('merge')}
+              className="mt-1 accent-[#1f5c4d]"
+            />
+            <span>
+              <b>Merge with my current data</b>
+              <span className="block text-xs text-[#5d6d70]">Adds new items and updates changed ones. Keeps your check marks.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm text-[#17262b] cursor-pointer">
+            <input
+              type="radio"
+              name="import-mode"
+              checked={importMode === 'replace'}
+              onChange={() => setImportMode('replace')}
+              className="mt-1 accent-[#1f5c4d]"
+            />
+            <span>
+              <b>Replace my calendar data</b>
+              <span className="block text-xs text-[#5d6d70]">Assignments and exams are swapped for the file's contents. Your notes are never deleted.</span>
+            </span>
+          </label>
+        </fieldset>
 
         {statusMessage && (
           <div
+            role="status"
             className={`mt-4 p-4 rounded-xl flex items-start gap-3 border text-sm ${
               statusMessage.type === 'success'
                 ? 'bg-[#f0f7f4] border-[#1f5c4d] text-[#1f5c4d]'
@@ -150,7 +259,19 @@ export const ImportsView: React.FC<ImportsViewProps> = ({
             ) : (
               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
             )}
-            <p className="font-semibold">{statusMessage.text}</p>
+            <div className="space-y-1">
+              <p className="font-semibold">{statusMessage.text}</p>
+              {statusMessage.lines?.map((line, i) => (
+                <p key={i} className="text-xs font-normal">
+                  {line}
+                </p>
+              ))}
+              {statusMessage.showScheduleLink && (
+                <button onClick={onViewSchedule} className="text-xs font-bold underline pt-1">
+                  View schedule
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -181,11 +302,12 @@ export const ImportsView: React.FC<ImportsViewProps> = ({
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-bold text-[#5d6d70] uppercase tracking-wider block">
+          <label htmlFor="canvas-url" className="text-xs font-bold text-[#5d6d70] uppercase tracking-wider block">
             Canvas Calendar Feed URL
           </label>
           <div className="flex flex-col sm:flex-row gap-2">
             <input
+              id="canvas-url"
               type="url"
               placeholder="https://yourschool.instructure.com/feeds/calendars/user_...ics"
               value={canvasUrl}
@@ -224,7 +346,7 @@ export const ImportsView: React.FC<ImportsViewProps> = ({
               Import Files
             </h3>
             <p className="text-xs text-[#5d6d70]">
-              Upload a downloaded <code className="bg-[#f2f4f0] px-1 rounded">.ics</code> calendar file or syllabus document
+              Upload a downloaded <code className="bg-[#f2f4f0] px-1 rounded">.ics</code> calendar file, including one you exported from this app
             </p>
           </div>
         </div>
@@ -232,7 +354,7 @@ export const ImportsView: React.FC<ImportsViewProps> = ({
         <label className="border-2 border-dashed border-[#dde3de] hover:border-[#1f5c4d] rounded-2xl p-6 text-center cursor-pointer transition-all bg-[#fcfdfc] block">
           <Upload className="w-8 h-8 text-[#5d6d70] mx-auto mb-2" />
           <span className="text-sm font-bold text-[#17262b] block">Choose calendar file to import</span>
-          <span className="text-xs text-[#5d6d70] mt-1 block">Supports .ics files from Canvas, Google Calendar, or Outlook</span>
+          <span className="text-xs text-[#5d6d70] mt-1 block">Supports .ics files from Canvas, Google Calendar, Apple Calendar, or Outlook</span>
           <input
             type="file"
             accept=".ics,text/calendar"
@@ -243,10 +365,11 @@ export const ImportsView: React.FC<ImportsViewProps> = ({
 
         {/* Or Paste ICS Text */}
         <div className="pt-2">
-          <label className="text-xs font-bold text-[#5d6d70] uppercase tracking-wider block mb-1">
+          <label htmlFor="pasted-ics" className="text-xs font-bold text-[#5d6d70] uppercase tracking-wider block mb-1">
             Or Paste Calendar File (.ics) Content
           </label>
           <textarea
+            id="pasted-ics"
             rows={3}
             placeholder="BEGIN:VCALENDAR&#10;VERSION:2.0&#10;BEGIN:VEVENT&#10;SUMMARY:Homework 1..."
             value={pastedIcs}
@@ -263,7 +386,90 @@ export const ImportsView: React.FC<ImportsViewProps> = ({
         </div>
       </div>
 
-      {/* Box 3: Import Website Links for Specific Courses (Page 1 PDF item: "Import website links specific courses") */}
+      {/* Box 3: Export calendar as .ics */}
+      <div className="bg-white rounded-2xl border border-[#dde3de] p-6 shadow-xs space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#a86f00]/10 text-[#a86f00] flex items-center justify-center">
+            <Download className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold font-['Bricolage_Grotesque',sans-serif] text-[#17262b]">
+              Export Calendar
+            </h3>
+            <p className="text-xs text-[#5d6d70]">
+              Download your deadlines, exams and study sessions as an <code className="bg-[#f2f4f0] px-1 rounded">.ics</code> file for Google Calendar, Apple Calendar or Outlook
+            </p>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm text-[#17262b]">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={exportOpts.includeExams}
+              onChange={() => toggleOpt('includeExams')}
+              className="accent-[#1f5c4d]"
+            />
+            Include exams
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={exportOpts.includeStudySessions}
+              onChange={() => toggleOpt('includeStudySessions')}
+              className="accent-[#1f5c4d]"
+            />
+            Include study sessions
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={exportOpts.includeCompleted}
+              onChange={() => toggleOpt('includeCompleted')}
+              className="accent-[#1f5c4d]"
+            />
+            Include completed assignments
+          </label>
+          <div className="flex items-center gap-2">
+            <label htmlFor="export-reminder" className="shrink-0">Reminder</label>
+            <select
+              id="export-reminder"
+              value={exportOpts.reminder}
+              onChange={(e) => setExportOpts((prev) => ({ ...prev, reminder: e.target.value as ExportOptions['reminder'] }))}
+              className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-[#dde3de] bg-[#f9faf8] text-sm focus:outline-none focus:ring-2 focus:ring-[#1f5c4d]"
+            >
+              <option value="1d">1 day before</option>
+              <option value="1h">1 hour before</option>
+              <option value="none">No reminder</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+          <p className="text-xs text-[#5d6d70]" aria-live="polite">
+            {exportTotal === 0
+              ? 'Nothing to export yet. Import a calendar or add assignments first.'
+              : `Ready to export ${exportPreview.assignments} assignments & events` +
+                (exportPreview.exams > 0 ? `, ${exportPreview.exams} exams` : '') +
+                (exportPreview.studySessions > 0 ? `, ${exportPreview.studySessions} study sessions` : '') +
+                '.'}
+          </p>
+          <button
+            onClick={handleExport}
+            disabled={exportTotal === 0}
+            className="px-6 py-3 rounded-xl font-bold text-sm bg-[#1f5c4d] text-white hover:bg-[#18493d] disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-xs shrink-0"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download .ics</span>
+          </button>
+        </div>
+
+        <p className="text-xs text-[#5d6d70]">
+          To add it to your calendar: Google Calendar &gt; Settings &gt; Import &amp; export. Apple Calendar &gt; File &gt; Import. Outlook &gt; Add calendar &gt; Upload from file.
+        </p>
+      </div>
+
+      {/* Box 4: Import Website Links for Specific Courses (Page 1 PDF item: "Import website links specific courses") */}
       <div className="bg-white rounded-2xl border border-[#dde3de] p-6 shadow-xs space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-[#7b4fd1]/10 text-[#7b4fd1] flex items-center justify-center">
@@ -282,6 +488,7 @@ export const ImportsView: React.FC<ImportsViewProps> = ({
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             type="url"
+            aria-label="Course link URL"
             placeholder="https://canvas.instructure.com/courses/12345"
             value={courseLinkUrl}
             onChange={(e) => setCourseLinkUrl(e.target.value)}
@@ -297,7 +504,7 @@ export const ImportsView: React.FC<ImportsViewProps> = ({
         </div>
       </div>
 
-      {/* Box 4: Sample Demo Reset */}
+      {/* Box 5: Sample Demo Reset */}
       <div className="p-4 rounded-xl bg-[#f2f4f0] border border-[#dde3de] flex items-center justify-between">
         <div>
           <p className="text-xs font-bold text-[#17262b]">Testing during the Hackathon?</p>
