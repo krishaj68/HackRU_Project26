@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Cadence Study Lockdown",
+  "version": "1.0.0",
+  "description": "Keeps Chrome on your Cadence study tab while a focus sprint is running.",
+  "permissions": ["tabs", "storage", "alarms"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "https://localhost/*",
+        "https://YOUR-DEPLOYED-DOMAIN/*"
+      ],
+      "js": ["content.js"]
+    }
+  ]
+}
