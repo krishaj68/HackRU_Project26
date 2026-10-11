@@ -8,7 +8,7 @@ import { ToDoView } from './components/ToDoView';
 import { NotesView } from './components/NotesView';
 import { ExamsView } from './components/ExamsView';
 import { StudyLockdownModal } from '../studyLockdown/StudyLockdownModal';
-import { Assignment, ClassItem, Exam, Folder, ScheduleBlock, ViewTab } from './types';
+import { Assignment, ClassItem, Exam, Folder, ScheduleBlock, UnitItem, ViewTab } from './types';
 import type { ParsedCalendar } from './utils/icsParser';
 import {
   ImportMode,
@@ -24,6 +24,26 @@ import {
   generateInitialFolders,
   getCourseColor,
 } from './utils/sampleData';
+
+const LEGACY_UNIT_NOTES = 'Add your introductory lecture notes, textbook summaries, or formulas here.';
+
+const getStudySection = (unit: UnitItem, sectionId: string) => {
+  const unitNotes = unit.notes === LEGACY_UNIT_NOTES ? '' : unit.notes;
+  if (sectionId === 'unit') return { name: 'Unit notes', notes: unitNotes };
+  if (sectionId === 'all') {
+    return {
+      name: 'All notes',
+      notes: [
+        unitNotes.trim() ? `Unit notes\n\n${unitNotes.trim()}` : '',
+        ...(unit.noteImports || []).map((note) => `${note.name}\n\n${note.notes.trim()}`),
+      ].filter(Boolean).join('\n\n--------------------\n\n'),
+    };
+  }
+  const selectedNote = unit.noteImports?.find((note) => `note:${note.id}` === sectionId);
+  return selectedNote
+    ? { name: selectedNote.name, notes: selectedNote.notes }
+    : { name: 'Unit notes', notes: unitNotes };
+};
 
 export default function App() {
   // Student Name
@@ -93,6 +113,23 @@ export default function App() {
     }
     return [];
   });
+
+  const [isStudyPickerOpen, setIsStudyPickerOpen] = useState(false);
+  const [selectedStudyClassId, setSelectedStudyClassId] = useState('');
+  const [selectedStudyUnitId, setSelectedStudyUnitId] = useState('');
+  const [selectedStudySectionId, setSelectedStudySectionId] = useState('unit');
+  const studyClasses = folders.flatMap((folder) =>
+    folder.classes.map((studyClass) => ({
+      ...studyClass,
+      selectionId: `${folder.id}:${studyClass.id}`,
+      folderName: folder.name,
+    }))
+  );
+  const selectedStudyClass = studyClasses.find((studyClass) => studyClass.selectionId === selectedStudyClassId);
+  const selectedStudyUnit = selectedStudyClass?.units.find((unit) => unit.id === selectedStudyUnitId);
+  const selectedStudySection = selectedStudyUnit
+    ? getStudySection(selectedStudyUnit, selectedStudySectionId)
+    : null;
 
   // Sync state
   const [syncedTime, setSyncedTime] = useState<Date>(new Date());
@@ -322,7 +359,7 @@ export default function App() {
     const course = courseName || (folders[0]?.classes[0]?.code) || 'General Study';
     const unit = unitName || 'Focus Sprint';
     let notes = notesText;
-    if (!notes) {
+    if (!notes && !courseName && !unitName) {
       const cls = folders[0]?.classes.find(
         (c) => c.name.includes(course) || c.code.includes(course)
       );
@@ -337,6 +374,28 @@ export default function App() {
     });
   };
 
+  const handleOpenStudyPicker = () => {
+    const firstClass = studyClasses[0];
+    if (!firstClass) {
+      handleLaunchStudySession();
+      return;
+    }
+    setSelectedStudyClassId(firstClass.selectionId);
+    setSelectedStudyUnitId(firstClass.units[0]?.id || '');
+    setSelectedStudySectionId('unit');
+    setIsStudyPickerOpen(true);
+  };
+
+  const handleStartSelectedStudy = () => {
+    if (!selectedStudyClass || !selectedStudyUnit || !selectedStudySection) return;
+    setIsStudyPickerOpen(false);
+    handleLaunchStudySession(
+      selectedStudyClass.name,
+      `${selectedStudyUnit.name}: ${selectedStudySection.name}`,
+      selectedStudySection.notes
+    );
+  };
+
   const activeTasksCount = assignments.filter((a) => a.type === 'a' && !a.completed).length;
 
   return (
@@ -345,7 +404,7 @@ export default function App() {
       <Header
         userName={userName}
         onUpdateName={setUserName}
-        onOpenStudyTime={() => handleLaunchStudySession()}
+        onOpenStudyTime={handleOpenStudyPicker}
         syncedTime={syncedTime}
         isSyncing={isSyncing}
         onRefresh={handleRefresh}
@@ -422,6 +481,93 @@ export default function App() {
       </div>
 
       {/* Study Sesh Lockdown Overlay Modal */}
+      {isStudyPickerOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="study-picker-title"
+            className="w-full max-w-lg rounded-2xl border border-[#dde3de] bg-white p-6 shadow-xl"
+          >
+            <div className="mb-5">
+              <h2 id="study-picker-title" className="text-xl font-bold font-['Bricolage_Grotesque',sans-serif] text-[#17262b]">
+                Choose what to study
+              </h2>
+              <p className="mt-1 text-sm text-[#5d6d70]">Select a class, unit, and note section for this session.</p>
+            </div>
+            <div className="space-y-4">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#5d6d70]">
+                Class
+                <select
+                  value={selectedStudyClassId}
+                  onChange={(event) => {
+                    const nextClass = studyClasses.find((studyClass) => studyClass.selectionId === event.target.value);
+                    setSelectedStudyClassId(event.target.value);
+                    setSelectedStudyUnitId(nextClass?.units[0]?.id || '');
+                    setSelectedStudySectionId('unit');
+                  }}
+                  className="mt-1.5 w-full rounded-xl border border-[#dde3de] bg-[#f9faf8] px-3 py-2.5 text-sm font-medium normal-case tracking-normal text-[#17262b]"
+                >
+                  {studyClasses.map((studyClass) => (
+                    <option key={studyClass.selectionId} value={studyClass.selectionId}>
+                      {studyClass.code} - {studyClass.name} ({studyClass.folderName})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#5d6d70]">
+                Unit
+                <select
+                  value={selectedStudyUnitId}
+                  onChange={(event) => {
+                    setSelectedStudyUnitId(event.target.value);
+                    setSelectedStudySectionId('unit');
+                  }}
+                  disabled={!selectedStudyClass?.units.length}
+                  className="mt-1.5 w-full rounded-xl border border-[#dde3de] bg-[#f9faf8] px-3 py-2.5 text-sm font-medium normal-case tracking-normal text-[#17262b] disabled:opacity-50"
+                >
+                  {selectedStudyClass?.units.map((unit) => (
+                    <option key={unit.id} value={unit.id}>{unit.name}</option>
+                  ))}
+                  {!selectedStudyClass?.units.length && <option value="">No units available</option>}
+                </select>
+              </label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#5d6d70]">
+                Section
+                <select
+                  value={selectedStudySectionId}
+                  onChange={(event) => setSelectedStudySectionId(event.target.value)}
+                  disabled={!selectedStudyUnit}
+                  className="mt-1.5 w-full rounded-xl border border-[#dde3de] bg-[#f9faf8] px-3 py-2.5 text-sm font-medium normal-case tracking-normal text-[#17262b] disabled:opacity-50"
+                >
+                  <option value="unit">Unit notes</option>
+                  {selectedStudyUnit?.noteImports?.map((note) => (
+                    <option key={note.id} value={`note:${note.id}`}>{note.name}</option>
+                  ))}
+                  <option value="all">All notes</option>
+                </select>
+              </label>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsStudyPickerOpen(false)}
+                className="rounded-xl border border-[#dde3de] px-4 py-2 text-sm font-semibold text-[#5d6d70] hover:bg-[#f2f4f0]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleStartSelectedStudy}
+                disabled={!selectedStudyClass || !selectedStudyUnit}
+                className="rounded-xl bg-[#1f5c4d] px-4 py-2 text-sm font-bold text-white hover:bg-[#18493d] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Start studying
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {studyLockdown.isOpen && (
         <StudyLockdownModal
           courseName={studyLockdown.courseName}

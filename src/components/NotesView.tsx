@@ -113,6 +113,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
   const currentImports = currentUnit?.noteImports || [];
   const selectedImport = currentImports.find((noteImport) => noteImport.id === selectedNoteTab);
   const resolvedNoteTab = selectedNoteTab === 'all' ? 'all' : selectedImport ? selectedNoteTab : 'unit';
+  const selectedSectionName = selectedImport?.name ?? (resolvedNoteTab === 'all' ? 'All notes' : 'Unit notes');
   const visibleNotes = resolvedNoteTab === 'all'
     ? currentUnit ? compileUnitNotes(currentUnit) : ''
     : selectedImport?.notes ?? currentUnit?.notes ?? '';
@@ -952,14 +953,14 @@ export const NotesView: React.FC<NotesViewProps> = ({
           onClick={() =>
             onLaunchStudySession(
               currentClass?.name || 'Class Study',
-              currentUnit?.name || 'Unit Study',
-              currentUnit ? compileUnitNotes(currentUnit) : ''
+              `${currentUnit?.name || 'Unit Study'}: ${selectedSectionName}`,
+              visibleNotes
             )
           }
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-[#1f5c4d] to-[#143e33] text-white shadow-md hover:shadow-lg transition-all active:scale-98"
         >
           <Flame className="w-4 h-4 text-[#f4d958]" />
-          <span>Study This Class</span>
+          <span>Study Selected Section</span>
           <span className="text-[11px] bg-white/20 px-1.5 py-0.5 rounded">Lockdown</span>
         </button>
       </div>
