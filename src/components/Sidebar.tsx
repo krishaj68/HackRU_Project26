@@ -24,7 +24,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'imports/exports' as ViewTab,
-      label: 'Imports / Exports /exports',
+      label: 'Imports / Exports',
       icon: DownloadCloud,
       description: 'Canvas link, files & links',
     },
