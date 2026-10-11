@@ -12,7 +12,7 @@ import {
   User,
   Pencil,
 } from 'lucide-react';
-import { Folder, ClassItem, UnitItem, ChatMessage } from '../types';
+import { Folder, ClassItem, UnitItem, ChatMessage } from '../src/types';
 
 interface NotesViewProps {
   folders: Folder[];

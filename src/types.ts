@@ -31,6 +31,7 @@ export interface UnitItem {
   id: string;
   name: string;
   notes: string;
+  noteImports?: NoteImport[];
   studyGuide?: {
     summary: string;
     keyConcepts: string[];
@@ -38,6 +39,13 @@ export interface UnitItem {
     commonPitfalls: string[];
     reviewQuestions: string[];
   };
+}
+
+export interface NoteImport {
+  id: string;
+  name: string;
+  notes: string;
+  kind?: 'import' | 'note';
 }
 
 export interface ClassItem {

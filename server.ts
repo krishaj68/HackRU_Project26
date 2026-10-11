@@ -1,8 +1,9 @@
 import express from 'express';
 import path from 'path';
+import net from 'net';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 
 dotenv.config();
 
@@ -10,9 +11,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = Number(process.env.PORT) || 3000;
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '30mb' }));
 
 // Shared Gemini client utility
 const apiKey = process.env.GEMINI_API_KEY || '';
@@ -100,15 +101,18 @@ app.post('/api/gemini/prioritize', async (req, res) => {
       // Graceful algorithmic fallback if no API key is provided
       const prioritized = assignments.map((a: any, idx: number) => {
         const dueDate = new Date(a.start);
-        const hoursLeft = Math.max(1, Math.round((dueDate.getTime() - Date.now()) / (1000 * 60 * 60)));
-        const weight = a.weight || 10;
-        const score = Math.round((weight * 2) + Math.max(0, 100 - hoursLeft / 2));
+        const hoursLeft = (dueDate.getTime() - Date.now()) / (1000 * 60 * 60);
+        const daysLeft = hoursLeft / 24;
+        const weight = Number(a.weight) || 10;
+        const weightScore = Math.min(100, Math.max(0, weight));
+        const deadlineScore = Math.min(100, Math.max(0, (1 - daysLeft / 7) * 100));
+        const score = Math.round(weightScore * 0.6 + deadlineScore * 0.4);
         return {
           uid: a.uid,
           priorityRank: idx + 1,
-          score: Math.min(99, Math.max(10, score)),
+          score: Math.min(100, Math.max(0, score)),
           estimatedHours: weight > 20 ? 4 : weight > 10 ? 2.5 : 1.5,
-          urgency: hoursLeft < 48 ? 'HIGH' : hoursLeft < 120 ? 'MEDIUM' : 'NORMAL',
+          urgency: hoursLeft < 24 ? 'CRITICAL' : hoursLeft < 72 ? 'HIGH' : hoursLeft < 168 ? 'MEDIUM' : 'LOW',
           reason: `Due in ${Math.round(hoursLeft / 24)}d (${weight}% of grade). High impact task.`,
           recommendedSlot: 'Today 4:00 PM - 6:00 PM',
         };
@@ -134,6 +138,11 @@ ${JSON.stringify(assignments.map((a: any) => ({
 
 Current date: ${new Date().toISOString()}
 User preferences: ${userContext || 'Prioritize high grade-weight items and soonest due dates to minimize stress.'}
+
+Prioritization rules:
+- Balance grade weight (60% of the score) with due-date urgency (40%).
+- Apply due-date urgency over a 7-day window: overdue or due today is most urgent, urgency tapers toward zero at 7 days, and dates beyond 7 days get no urgency bonus.
+- Keep high grade weight meaningful even when its due date is outside the 7-day window.
 
 Return JSON with this exact schema:
 {
@@ -648,6 +657,112 @@ app.post('/api/gemini/parse-classes', async (req, res) => {
   }
 });
 
+async function findAvailablePort(startPort: number, maxAttempts = 20): Promise<number> {
+  for (let portCandidate = startPort; portCandidate < startPort + maxAttempts; portCandidate++) {
+    const isAvailable = await new Promise<boolean>((resolve) => {
+      const tester = net.createServer();
+
+      tester.once('error', (err: NodeJS.ErrnoException) => {
+        resolve(err.code !== 'EADDRINUSE');
+      });
+
+      tester.once('listening', () => {
+        tester.close(() => resolve(true));
+      });
+
+      tester.listen(portCandidate, '127.0.0.1');
+    });
+
+    if (isAvailable) return portCandidate;
+  }
+
+  return startPort;
+}
+
+app.post('/api/gemini/organize-notes', async (req, res) => {
+  try {
+    const {
+      courseName = 'College Course',
+      unitTitle = 'Unit',
+      mode = 'single',
+      text,
+      fileBase64,
+      mimeType,
+      existingUnitNames = [],
+    } = req.body || {};
+
+    if (!text && !fileBase64) {
+      return res.status(400).json({ error: 'No notes provided' });
+    }
+
+    const rules = `
+You are organizing a college student's study notes for the course "${courseName}".
+
+Rules:
+- Keep EVERY fact, definition, formula, example and date from the source. Never invent or add content that is not in the source.
+- Fix structure only: group related ideas, order them logically, remove duplicated lines and obvious scanning/formatting junk (page numbers, headers, footers).
+- Output plain text, not markdown. The editor does not render markdown. Use short section headings on their own line, "- " bullets, and put each formula on its own line.
+- Keep the student's own wording where it is clear; lightly fix typos.
+`;
+
+    const modeRules =
+      mode === 'split'
+        ? `
+Split the notes into separate units by topic (between 2 and 8 units).
+- Name each unit in the form "Unit N: Topic", continuing after any existing units.
+- Existing unit names in this class: ${JSON.stringify(existingUnitNames)}. If a topic clearly belongs to an existing unit, reuse that unit's exact name so the notes get merged into it.
+- Every part of the source must land in exactly one unit.`
+        : `
+Return exactly ONE unit named "${unitTitle}" containing all of the organized notes.`;
+
+    const parts: any[] = [{ text: rules + modeRules }];
+    if (fileBase64) parts.push({ inlineData: { data: fileBase64, mimeType: mimeType || 'application/pdf' } });
+    if (text) parts.push({ text: `NOTES TO ORGANIZE:\n\n${text}` });
+
+    if (!apiKey) {
+      return res.json({
+        units: [
+          {
+            name: unitTitle,
+            notes: text || `Notes imported from ${courseName}.\n\n- Key idea 1\n- Key idea 2\n- Formula or definition\n- Review question`,
+          },
+        ],
+      });
+    }
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: [{ role: 'user', parts }],
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            units: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  notes: { type: Type.STRING },
+                },
+                required: ['name', 'notes'],
+              },
+            },
+          },
+          required: ['units'],
+        },
+      },
+    });
+
+    const parsed = JSON.parse(response.text ?? '{}');
+    res.json({ units: Array.isArray(parsed.units) ? parsed.units : [] });
+  } catch (err: any) {
+    console.error('organize-notes failed', err);
+    res.status(500).json({ error: err.message || 'Failed to organize notes' });
+  }
+});
+
 // Setup Vite in development or serve static in production
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
@@ -664,8 +779,9 @@ async function startServer() {
     });
   }
 
-  app.listen(port, () => {
-    console.log(`Cadence Study server listening on http://localhost:${port}`);
+  const actualPort = await findAvailablePort(port);
+  app.listen(actualPort, () => {
+    console.log(`Cadence Study server listening on http://localhost:${actualPort}`);
   });
 }
 

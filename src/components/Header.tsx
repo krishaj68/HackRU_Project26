@@ -70,7 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
                   className="text-2xl font-bold font-['Bricolage_Grotesque',sans-serif] tracking-tight text-[#17262b] cursor-pointer hover:text-[#1f5c4d] transition-colors group flex items-center gap-2"
                   title="Click to change your name"
                 >
-                  Welcome {userName}!
+                  Welcome!
                   <span className="text-xs font-normal text-[#5d6d70] opacity-0 group-hover:opacity-100 transition-opacity bg-[#f2f4f0] px-2 py-0.5 rounded-md">
                     edit
                   </span>

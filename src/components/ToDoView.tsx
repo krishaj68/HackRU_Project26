@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Sparkles, Check, Plus, Clock, AlertTriangle, ArrowUpDown, Calendar, ExternalLink, Flame, CheckCircle2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Sparkles, Check, Plus, ArrowUpDown, Calendar, ExternalLink, CheckCircle2, Archive } from 'lucide-react';
 import { Assignment } from '../types';
 import { getCourseColor } from '../utils/sampleData';
 
@@ -21,6 +21,8 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
   scheduleRecommendation,
 }) => {
   const [filterMode, setFilterMode] = useState<'all' | 'active' | 'completed'>('active');
+  const [showArchived, setShowArchived] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const [sortMode, setSortMode] = useState<'gemini' | 'chronological' | 'weight'>('gemini');
   const [isPrioritizing, setIsPrioritizing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -32,12 +34,19 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
   const [newWeight, setNewWeight] = useState(15);
   const [newDesc, setNewDesc] = useState('');
   const taskAssignments = assignments.filter((assignment) => assignment.type === 'a');
+  const currentAssignments = taskAssignments.filter((assignment) => new Date(assignment.start).getTime() >= now);
+  const archivedAssignments = taskAssignments.filter((assignment) => new Date(assignment.start).getTime() < now);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Call Gemini to prioritize based on weight and due date
   const handleTriggerGeminiPrioritization = async () => {
     setIsPrioritizing(true);
     try {
-      const activeOnly = taskAssignments.filter((assignment) => !assignment.completed);
+      const activeOnly = currentAssignments.filter((assignment) => !assignment.completed);
       const res = await fetch('/api/gemini/prioritize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,7 +120,8 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
   };
 
   // Filtered and Sorted list
-  const filtered = taskAssignments.filter((a) => {
+  const visibleAssignments = showArchived ? archivedAssignments : currentAssignments;
+  const filtered = visibleAssignments.filter((a) => {
     if (filterMode === 'active') return !a.completed;
     if (filterMode === 'completed') return a.completed;
     return true;
@@ -154,7 +164,7 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
               To Do
             </h2>
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#1f5c4d] text-white font-bold">
-              {taskAssignments.filter((a) => !a.completed).length} Active
+              {currentAssignments.filter((a) => !a.completed).length} Active
             </span>
           </div>
           <p className="text-xs text-[#5d6d70] mt-1">
@@ -207,7 +217,28 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
 
       {/* Filter and Sort Toggles */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-[#dde3de]">
-        {/* Status filters */}
+        <div className="flex flex-wrap items-center gap-3">
+        {/* Status and archive views */}
+        <div className="flex items-center gap-1 bg-[#f2f4f0] p-1 rounded-xl">
+          <button
+            onClick={() => setShowArchived(false)}
+            className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+              !showArchived ? 'bg-[#1f5c4d] text-white shadow-xs' : 'text-[#5d6d70] hover:text-[#17262b]'
+            }`}
+          >
+            Current ({currentAssignments.length})
+          </button>
+          <button
+            onClick={() => setShowArchived(true)}
+            className={`flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+              showArchived ? 'bg-[#1f5c4d] text-white shadow-xs' : 'text-[#5d6d70] hover:text-[#17262b]'
+            }`}
+          >
+            <Archive className="w-3 h-3" />
+            Archive ({archivedAssignments.length})
+          </button>
+        </div>
+
         <div className="flex items-center gap-1 bg-[#f2f4f0] p-1 rounded-xl">
           <button
             onClick={() => setFilterMode('active')}
@@ -223,7 +254,7 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
               filterMode === 'all' ? 'bg-[#1f5c4d] text-white shadow-xs' : 'text-[#5d6d70] hover:text-[#17262b]'
             }`}
           >
-            All ({taskAssignments.length})
+            All ({visibleAssignments.length})
           </button>
           <button
             onClick={() => setFilterMode('completed')}
@@ -231,8 +262,9 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
               filterMode === 'completed' ? 'bg-[#1f5c4d] text-white shadow-xs' : 'text-[#5d6d70] hover:text-[#17262b]'
             }`}
           >
-            Completed ({taskAssignments.filter((a) => a.completed).length})
+            Completed ({visibleAssignments.filter((a) => a.completed).length})
           </button>
+        </div>
         </div>
 
         {/* Sort modes */}
@@ -279,14 +311,16 @@ export const ToDoView: React.FC<ToDoViewProps> = ({
         {sorted.length === 0 ? (
           <div className="bg-white rounded-2xl border border-[#dde3de] p-12 text-center">
             <CheckCircle2 className="w-12 h-12 text-[#1f5c4d] mx-auto mb-3 opacity-60" />
-            <h3 className="text-lg font-bold text-[#17262b]">All caught up!</h3>
-            <p className="text-xs text-[#5d6d70] mt-1">No pending assignments matching this filter.</p>
+            <h3 className="text-lg font-bold text-[#17262b]">{showArchived ? 'No archived assignments' : 'All caught up!'}</h3>
+            <p className="text-xs text-[#5d6d70] mt-1">
+              {showArchived ? 'Past assignments will appear here.' : 'No pending assignments matching this filter.'}
+            </p>
           </div>
         ) : (
           sorted.map((item, index) => {
             const color = getCourseColor(item.course);
             const dueDate = new Date(item.start);
-            const diffHours = (dueDate.getTime() - Date.now()) / (1000 * 60 * 60);
+            const diffHours = (dueDate.getTime() - now) / (1000 * 60 * 60);
             const isOverdue = diffHours < 0 && !item.completed;
 
             return (
