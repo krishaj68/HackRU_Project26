@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}{{ class_name }}{% endblock %}
+
+{% block content %}
+<header class="topbar">
+  <h1>{{ class_name }}</h1>
+  <button class="btn primary" type="button" data-study-btn data-label="Study">Study</button>
+</header>
+<p class="crumbs">
+  <a href="{{ url_for('notes_page') }}">Notes</a> /
+  <a href="{{ url_for('folder_page', folder_name=folder_name) }}">{{ folder_name }}</a> / {{ class_name }}
+</p>
+
+{# data-* attributes hand the context to app.js #}
+<div class="class-layout" id="class-app"
+     data-folder="{{ folder_name }}" data-class="{{ class_name }}" data-unit="{{ unit }}"
+     data-note-url="{{ url_for('api_note') }}" data-chat-url="{{ url_for('api_chat') }}">
+
+  {# Left: Import + Unit1..Unit5 #}
+  <nav class="card unit-menu" aria-label="Units">
+    {% for m in menu %}
+      <a class="{{ 'active' if m == unit }}" href="{{ url_for('class_page', class_name=class_name, folder=folder_name, unit=m) }}">{{ m }}</a>
+    {% endfor %}
+  </nav>
+
+  {# Middle: note editor, or the import panel #}
+  <section class="card editor-panel">
+    {% if note %}
+      <div class="panel-head">
+        <h2>{{ unit }} <span class="muted">{{ note.note_title }}</span></h2>
+        <span id="save-status" class="muted" aria-live="polite">Saved</span>
+      </div>
+      <textarea id="note-editor" placeholder="Start typing your notes…" aria-label="Note editor">{{ note.content }}</textarea>
+    {% else %}
+      <div class="panel-head"><h2>Import</h2></div>
+      {% if files %}
+        <form method="post" action="{{ url_for('class_import', class_name=class_name) }}" class="stack">
+          <input type="hidden" name="folder" value="{{ folder_name }}">
+          <label for="imp-file">Canvas file</label>
+          <select id="imp-file" name="file">
+            <option value="">None</option>
+            {% for f in files %}<option>{{ f.name }}</option>{% endfor %}
+          </select>
+          <label for="imp-text">Paste text (optional)</label>
+          <textarea id="imp-text" name="pasted" rows="6" placeholder="Paste slides or readings here"></textarea>
+          <label for="imp-unit">Add to</label>
+          <select id="imp-unit" name="unit">{% for u in units %}<option>{{ u }}</option>{% endfor %}</select>
+          <button class="btn primary" type="submit">Add to note</button>
+        </form>
+      {% else %}
+        <p class="empty">No Canvas files yet. Load Canvas data on the <a href="{{ url_for('index') }}">Imports page</a>, or paste text into any unit's note.</p>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  {# Right: chat bot #}
+  <aside class="card chat-panel">
+    <h2>Chat Bot AI</h2>
+    <div id="chat-log" class="chat-log" aria-live="polite">
+      {% if not history %}
+        <p class="empty" id="chat-empty">Ask me to summarize your notes or quiz you on them.</p>
+      {% endif %}
+      {% for m in history %}<div class="bubble {{ m.role }}">{{ m.text }}</div>{% endfor %}
+    </div>
+    <form id="chat-form" class="chat-form">
+      <input id="chat-input" maxlength="1000" placeholder="Ask about this class" aria-label="Message" autocomplete="off" required>
+      <button class="btn primary" type="submit">Send</button>
+    </form>
+  </aside>
+</div>
+{% endblock %}

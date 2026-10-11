@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}To Do{% endblock %}
+
+{% block content %}
+<header class="topbar">
+  <h1>To Do</h1>
+  <span class="muted">{{ finished }} of {{ total }} done</span>
+</header>
+
+{% if groups %}
+  <section class="card">
+    {% for g in groups %}
+      <div class="day-group {{ 'past' if g.past }}">
+        <h3>{{ g.label }}{% if g.today %} <span class="tag">Today</span>{% endif %}</h3>
+        <ul class="rows">
+          {% for i in g.entries %}
+            <li class="{{ 'is-done' if i.id in done }}">
+              <form method="post" action="{{ url_for('todo_toggle', item_id=i.id) }}" class="check-form">
+                <button class="check" type="submit" aria-label="{{ 'Mark not done' if i.id in done else 'Mark done' }}: {{ i.title }}">{{ '✓' if i.id in done }}</button>
+                <span><strong>{{ i.title }}</strong>{% if i.course %} <span class="muted">{{ i.course }}</span>{% endif %}</span>
+              </form>
+              <span class="time">{{ i.time_label }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endfor %}
+  </section>
+{% else %}
+  <section class="card">
+    <p class="empty">Nothing to do yet. Import your Canvas calendar or data on the <a href="{{ url_for('index') }}">Imports page</a>.</p>
+  </section>
+{% endif %}
+{% endblock %}

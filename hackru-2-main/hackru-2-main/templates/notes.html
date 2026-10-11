@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Notes{% endblock %}
+
+{% block content %}
+<header class="topbar">
+  <h1>Notes</h1>
+  <details class="create">
+    <summary class="btn primary">Create Folder</summary>
+    <form method="post" action="{{ url_for('create_folder') }}" class="popover">
+      <label for="folder-name">Folder name</label>
+      <input id="folder-name" name="name" maxlength="40" placeholder="Spring Sem 27" required>
+      <button class="btn primary" type="submit">Create folder</button>
+    </form>
+  </details>
+</header>
+
+<div class="grid three">
+  {% for f in folders %}
+    <a class="card tile" href="{{ url_for('folder_page', folder_name=f.name) }}">
+      <h2>{{ f.name }}</h2>
+      <span class="muted">{{ f.class_count }} {{ 'class' if f.class_count == 1 else 'classes' }}</span>
+    </a>
+  {% endfor %}
+</div>
+{% endblock %}
